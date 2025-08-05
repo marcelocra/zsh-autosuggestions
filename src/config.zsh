@@ -93,3 +93,19 @@ typeset -g ZSH_AUTOSUGGEST_ORIGINAL_WIDGET_PREFIX=autosuggest-orig-
 # Pty name for capturing completions for completion suggestion strategy
 (( ! ${+ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME} )) &&
 typeset -g ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME=zsh_autosuggest_completion_pty
+
+# Validate and sanitize user configuration
+_zsh_autosuggest_validate_config() {
+	# Ensure PTY name doesn't contain dangerous characters
+	if [[ -n "$ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME" ]]; then
+		# Remove any potentially dangerous characters from PTY name
+		ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME="${ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME//[^a-zA-Z0-9_]/}"
+		# Ensure it's not empty after sanitization
+		[[ -z "$ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME" ]] && ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME="zsh_autosuggest_completion_pty"
+	fi
+
+	# Validate buffer max size is numeric if set
+	if [[ -n "$ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE" ]] && [[ ! "$ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE" =~ '^[0-9]+$' ]]; then
+		unset ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE
+	fi
+}

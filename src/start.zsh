@@ -5,6 +5,9 @@
 
 # Start the autosuggestion widgets
 _zsh_autosuggest_start() {
+	# Validate configuration before starting
+	_zsh_autosuggest_validate_config
+
 	# By default we re-bind widgets on every precmd to ensure we wrap other
 	# wrappers. Specifically, highlighting breaks if our widgets are wrapped by
 	# zsh-syntax-highlighting widgets. This also allows modifications to the

@@ -16,17 +16,20 @@ _zsh_autosuggest_async_request() {
 
 		# We won't know the pid unless the user has zsh/system module installed
 		if [[ -n "$_ZSH_AUTOSUGGEST_CHILD_PID" ]]; then
-			# Zsh will make a new process group for the child process only if job
-			# control is enabled (MONITOR option)
-			if [[ -o MONITOR ]]; then
-				# Send the signal to the process group to kill any processes that may
-				# have been forked by the suggestion strategy
-				kill -TERM -$_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
-			else
-				# Kill just the child process since it wasn't placed in a new process
-				# group. If the suggestion strategy forked any child processes they may
-				# be orphaned and left behind.
-				kill -TERM $_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
+			# Verify the process still exists and belongs to us before killing
+			if kill -0 "$_ZSH_AUTOSUGGEST_CHILD_PID" 2>/dev/null; then
+				# Zsh will make a new process group for the child process only if job
+				# control is enabled (MONITOR option)
+				if [[ -o MONITOR ]]; then
+					# Send the signal to the process group to kill any processes that may
+					# have been forked by the suggestion strategy
+					kill -TERM -$_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
+				else
+					# Kill just the child process since it wasn't placed in a new process
+					# group. If the suggestion strategy forked any child processes they may
+					# be orphaned and left behind.
+					kill -TERM $_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
+				fi
 			fi
 		fi
 	fi

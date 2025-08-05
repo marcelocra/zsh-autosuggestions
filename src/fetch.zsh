@@ -15,6 +15,11 @@ _zsh_autosuggest_fetch_suggestion() {
 	strategies=(${=ZSH_AUTOSUGGEST_STRATEGY})
 
 	for strategy in $strategies; do
+		# Validate strategy name to prevent injection attacks
+		if ! _zsh_autosuggest_validate_strategy "$strategy"; then
+			continue
+		fi
+
 		# Try to get a suggestion from this strategy
 		_zsh_autosuggest_strategy_$strategy "$1"
 

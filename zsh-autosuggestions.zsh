@@ -120,6 +120,22 @@ typeset -g ZSH_AUTOSUGGEST_ORIGINAL_WIDGET_PREFIX=autosuggest-orig-
 (( ! ${+ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME} )) &&
 typeset -g ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME=zsh_autosuggest_completion_pty
 
+# Validate and sanitize user configuration
+_zsh_autosuggest_validate_config() {
+	# Ensure PTY name doesn't contain dangerous characters
+	if [[ -n "$ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME" ]]; then
+		# Remove any potentially dangerous characters from PTY name
+		ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME="${ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME//[^a-zA-Z0-9_]/}"
+		# Ensure it's not empty after sanitization
+		[[ -z "$ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME" ]] && ZSH_AUTOSUGGEST_COMPLETIONS_PTY_NAME="zsh_autosuggest_completion_pty"
+	fi
+
+	# Validate buffer max size is numeric if set
+	if [[ -n "$ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE" ]] && [[ ! "$ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE" =~ '^[0-9]+$' ]]; then
+		unset ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE
+	fi
+}
+
 #--------------------------------------------------------------------#
 # Utility Functions                                                  #
 #--------------------------------------------------------------------#
@@ -128,7 +144,17 @@ _zsh_autosuggest_escape_command() {
 	setopt localoptions EXTENDED_GLOB
 
 	# Escape special chars in the string (requires EXTENDED_GLOB)
-	echo -E "${1//(#m)[\"\'\\()\[\]|*?~]/\\$MATCH}"
+	# Enhanced to include more shell metacharacters for better security
+	echo -E "${1//(#m)[\"\'\\()\[\]|*?~\$\`&;<>]/\\$MATCH}"
+}
+
+# Validate strategy names to prevent injection attacks
+_zsh_autosuggest_validate_strategy() {
+	local strategy="$1"
+	case "$strategy" in
+		history|completion|match_prev_cmd) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
 #--------------------------------------------------------------------#
@@ -745,6 +771,11 @@ _zsh_autosuggest_fetch_suggestion() {
 	strategies=(${=ZSH_AUTOSUGGEST_STRATEGY})
 
 	for strategy in $strategies; do
+		# Validate strategy name to prevent injection attacks
+		if ! _zsh_autosuggest_validate_strategy "$strategy"; then
+			continue
+		fi
+
 		# Try to get a suggestion from this strategy
 		_zsh_autosuggest_strategy_$strategy "$1"
 
@@ -773,17 +804,20 @@ _zsh_autosuggest_async_request() {
 
 		# We won't know the pid unless the user has zsh/system module installed
 		if [[ -n "$_ZSH_AUTOSUGGEST_CHILD_PID" ]]; then
-			# Zsh will make a new process group for the child process only if job
-			# control is enabled (MONITOR option)
-			if [[ -o MONITOR ]]; then
-				# Send the signal to the process group to kill any processes that may
-				# have been forked by the suggestion strategy
-				kill -TERM -$_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
-			else
-				# Kill just the child process since it wasn't placed in a new process
-				# group. If the suggestion strategy forked any child processes they may
-				# be orphaned and left behind.
-				kill -TERM $_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
+			# Verify the process still exists and belongs to us before killing
+			if kill -0 "$_ZSH_AUTOSUGGEST_CHILD_PID" 2>/dev/null; then
+				# Zsh will make a new process group for the child process only if job
+				# control is enabled (MONITOR option)
+				if [[ -o MONITOR ]]; then
+					# Send the signal to the process group to kill any processes that may
+					# have been forked by the suggestion strategy
+					kill -TERM -$_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
+				else
+					# Kill just the child process since it wasn't placed in a new process
+					# group. If the suggestion strategy forked any child processes they may
+					# be orphaned and left behind.
+					kill -TERM $_ZSH_AUTOSUGGEST_CHILD_PID 2>/dev/null
+				fi
 			fi
 		fi
 	fi
@@ -839,6 +873,9 @@ _zsh_autosuggest_async_response() {
 
 # Start the autosuggestion widgets
 _zsh_autosuggest_start() {
+	# Validate configuration before starting
+	_zsh_autosuggest_validate_config
+
 	# By default we re-bind widgets on every precmd to ensure we wrap other
 	# wrappers. Specifically, highlighting breaks if our widgets are wrapped by
 	# zsh-syntax-highlighting widgets. This also allows modifications to the
